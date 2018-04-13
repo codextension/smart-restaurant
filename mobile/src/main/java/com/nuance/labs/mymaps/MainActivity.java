@@ -17,6 +17,7 @@ import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.MapView;
 import com.google.android.gms.maps.MapsInitializer;
 import com.google.android.gms.maps.OnMapReadyCallback;
+import com.google.android.gms.maps.model.BitmapDescriptorFactory;
 import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.MarkerOptions;
 import com.google.android.gms.maps.model.PolylineOptions;
@@ -37,6 +38,7 @@ public class MainActivity extends AppCompatActivity {
     private Toolbar mTopToolbar;
     private MapView mapView;
     private GoogleMap map;
+    private ArrayList markerPoints = new ArrayList();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -62,6 +64,50 @@ public class MainActivity extends AppCompatActivity {
                 // Updates the location and zoom of the MapView
                 CameraUpdate cameraUpdate = CameraUpdateFactory.newCameraPosition(map.getCameraPosition());
                 map.animateCamera(cameraUpdate);
+
+                map.setOnMapClickListener(new GoogleMap.OnMapClickListener() {
+                    @Override
+                    public void onMapClick(LatLng latLng) {
+
+                        if (markerPoints.size() > 1) {
+                            markerPoints.clear();
+                            map.clear();
+                        }
+
+                        // Adding new item to the ArrayList
+                        markerPoints.add(latLng);
+
+                        // Creating MarkerOptions
+                        MarkerOptions options = new MarkerOptions();
+
+                        // Setting the position of the marker
+                        options.position(latLng);
+
+                        if (markerPoints.size() == 1) {
+                            options.icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_GREEN));
+                        } else if (markerPoints.size() == 2) {
+                            options.icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED));
+                        }
+
+                        // Add new marker to the Google Map Android API V2
+                        map.addMarker(options);
+
+                        // Checks, whether start and end locations are captured
+                        if (markerPoints.size() >= 2) {
+                            LatLng origin = (LatLng) markerPoints.get(0);
+                            LatLng dest = (LatLng) markerPoints.get(1);
+
+                            // Getting URL to the Google Directions API
+                            String url = getDirectionsUrl(origin, dest);
+
+                            DownloadTask downloadTask = new DownloadTask();
+
+                            // Start downloading json data from Google Directions API
+                            downloadTask.execute(url);
+                        }
+
+                    }
+                });
 
             }
         });
