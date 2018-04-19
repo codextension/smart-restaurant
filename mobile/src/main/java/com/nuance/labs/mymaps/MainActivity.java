@@ -1,10 +1,13 @@
 package com.nuance.labs.mymaps;
 
 import android.Manifest;
+import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.os.AsyncTask;
 import android.os.Bundle;
+import android.preference.PreferenceManager;
 import android.support.v4.app.ActivityCompat;
 import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.Toolbar;
@@ -50,6 +53,9 @@ public class MainActivity extends AppCompatActivity {
         mapView.onCreate(savedInstanceState);
 
 
+        SharedPreferences sharedPref = PreferenceManager.getDefaultSharedPreferences(this);
+        String syncConnPref = sharedPref.getString("gmap_key", "");
+
         // Gets to GoogleMap from the MapView and does initialization stuff
         mapView.getMapAsync(new OnMapReadyCallback() {
             @Override
@@ -64,7 +70,6 @@ public class MainActivity extends AppCompatActivity {
                 // Updates the location and zoom of the MapView
                 CameraUpdate cameraUpdate = CameraUpdateFactory.newCameraPosition(map.getCameraPosition());
                 map.animateCamera(cameraUpdate);
-
                 map.setOnMapClickListener(new GoogleMap.OnMapClickListener() {
                     @Override
                     public void onMapClick(LatLng latLng) {
@@ -128,7 +133,8 @@ public class MainActivity extends AppCompatActivity {
     public boolean onOptionsItemSelected(MenuItem item) {
         switch (item.getItemId()) {
             case R.id.action_settings:
-                // User chose the "Settings" item, show the app settings UI...
+                Intent i = new Intent(this, SettingsActivity.class);
+                startActivity(i);
                 return true;
             default:
                 // If we got here, the user's action was not recognized.
