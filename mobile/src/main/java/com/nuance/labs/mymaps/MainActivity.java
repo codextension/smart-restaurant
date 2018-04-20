@@ -43,6 +43,8 @@ import com.nuance.speechkit.Session;
 import com.nuance.speechkit.Transaction;
 import com.nuance.speechkit.TransactionException;
 
+import org.json.JSONArray;
+import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
@@ -75,18 +77,21 @@ public class MainActivity extends AppCompatActivity implements SharedPreferences
         @Override
         public void onFinishedRecording(Transaction transaction) {
             listenToUserBtn.setImageResource(android.R.drawable.ic_btn_speak_now);
-            super.onFinishedRecording(transaction);
         }
 
         @Override
         public void onRecognition(Transaction transaction, Recognition recognition) {
             showMessage(recognition.getText());
-            super.onRecognition(transaction, recognition);
         }
 
         @Override
         public void onInterpretation(Transaction transaction, Interpretation interpretation) {
-            super.onInterpretation(transaction, interpretation);
+            JSONObject result = interpretation.getResult();
+            try {
+                driveMeThere(result);
+            } catch (JSONException e) {
+                e.printStackTrace();
+            }
         }
 
         @Override
@@ -106,10 +111,33 @@ public class MainActivity extends AppCompatActivity implements SharedPreferences
 
         @Override
         public void onError(Transaction transaction, String s, TransactionException e) {
-            showMessage(e.getLocalizedMessage());
+            showMessage(s);
             super.onError(transaction, s, e);
         }
     };
+
+    private void driveMeThere(JSONObject result) throws JSONException {
+        JSONObject interpretations = ((JSONArray) result.get("interpretations")).getJSONObject(0);
+        JSONObject action = interpretations.getJSONObject("action");
+        JSONObject concepts = interpretations.getJSONObject("concepts");
+        JSONObject intent = action.getJSONObject("intent");
+
+        String domain = intent.getString("value");
+        if (domain.equals("restaurantDomain")) {
+            if (concepts.has("distance_modifier")) {
+                JSONObject distance_modifier = ((JSONArray) concepts.get("distance_modifier")).getJSONObject(0);
+                String distance = distance_modifier.getString("value");
+            }
+            if (concepts.has("restaurant_name")) {
+                JSONObject restaurant_name = ((JSONArray) concepts.get("restaurant_name")).getJSONObject(0);
+                String restaurant = restaurant_name.getString("value");
+            }
+            if (concepts.has("price_modifier")) {
+                JSONObject price_modifier = ((JSONArray) concepts.get("price_modifier")).getJSONObject(0);
+                String price = price_modifier.getString("value");
+            }
+        }
+    }
 
     private void showMessage(String msg) {
         Snackbar mySnackbar = Snackbar.make(findViewById(R.id.mainCoordinatorLayout), msg, Snackbar.LENGTH_LONG);
@@ -123,7 +151,8 @@ public class MainActivity extends AppCompatActivity implements SharedPreferences
         }
 
         if (ActivityCompat.checkSelfPermission(getBaseContext(), Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
-            recoTx = speechSession.recognize(recoTxOptions, recoListener);
+            JSONObject appServerData = new JSONObject();
+            recoTx = speechSession.recognizeWithService(Configuration.CONTEXT_TAG, appServerData, recoTxOptions, recoListener);
         } else {
             requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO},
                     Configuration.PERMISSION_REQUEST_MICROPHONE);
@@ -137,7 +166,8 @@ public class MainActivity extends AppCompatActivity implements SharedPreferences
                                            @NonNull int[] grantResults) {
         if (requestCode == Configuration.PERMISSION_REQUEST_MICROPHONE) {
             if (grantResults.length == 1 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                recoTx = speechSession.recognize(recoTxOptions, recoListener);
+                JSONObject appServerData = new JSONObject();
+                recoTx = speechSession.recognizeWithService(Configuration.CONTEXT_TAG, appServerData, recoTxOptions, recoListener);
             }
         } else if (requestCode == Configuration.PERMISSION_REQUEST_LOCATION) {
             if (grantResults.length == 1 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
@@ -237,9 +267,6 @@ public class MainActivity extends AppCompatActivity implements SharedPreferences
     @SuppressLint("MissingPermission")
     private void initializeMap() {
         map.setMyLocationEnabled(true);
-        map.getUiSettings().setMyLocationButtonEnabled(true);
-        map.getUiSettings().setCompassEnabled(true);
-        map.getUiSettings().setZoomControlsEnabled(true);
         LocationManager locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
         Criteria criteria = new Criteria();
         Location location = locationManager.getLastKnownLocation(locationManager.getBestProvider(criteria, false));
@@ -254,6 +281,8 @@ public class MainActivity extends AppCompatActivity implements SharedPreferences
                     .build();                   // Creates a CameraPosition from the builder
             map.animateCamera(CameraUpdateFactory.newCameraPosition(cameraPosition));
         }
+
+        MapsInitializer.initialize(this);
     }
 
     @Override

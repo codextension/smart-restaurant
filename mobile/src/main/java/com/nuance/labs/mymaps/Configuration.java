@@ -2,27 +2,22 @@ package com.nuance.labs.mymaps;
 
 import android.net.Uri;
 
-import com.nuance.speechkit.PcmFormat;
-
 public class Configuration {
 
-    //All fields are required.
-    //Your credentials can be found in your Nuance Developers portal, under "Manage My Apps".
-    public static final String APP_KEY = "8c9f30ba729386c2ba363e0744b165df18449bc17b0df7992cf51cb0e410dc70af0c2a229fb0e459e622602ad3c509eb0aa4ac85b2a41fde993b8e7d4c6aedfb";
-    public static final String APP_ID = "NMDPPRODUCTION_Nuance_MyMap_20180414112542";
-    public static final String SERVER_HOST = "ltt.nmdp.nuancemobility.net";
+    // Credentials
+    public static final String APP_KEY = "421dca0a102398aabc513780f012b98f16846542ee1982c1529e40d6825962c5772dcf875068320cb9698daa7b463991ca9ed4b8b7567909f4b9df7713423c8a";
+    public static final String APP_ID = "NMDPTRIAL_elie_khoury_nuance_com20180403090600";
+
+    // Server
+    public static final String SERVER_HOST = "nmsps.dev.nuance.com";
     public static final String SERVER_PORT = "443";
-
-    public static final String LANGUAGE = "eng-USA";
-
     public static final Uri SERVER_URI = Uri.parse("nmsps://" + APP_ID + "@" + SERVER_HOST + ":" + SERVER_PORT);
 
-    //Only needed if using NLU
-    public static final String CONTEXT_TAG = "!NLU_CONTEXT_TAG!";
+    // Language
+    public static final String LANGUAGE = "eng-USA";
 
-    public static final PcmFormat PCM_FORMAT = new PcmFormat(PcmFormat.SampleFormat.SignedLinear16, 16000, 1);
-    public static final String LANGUAGE_CODE = (Configuration.LANGUAGE.contains("!") ? "eng-USA" : Configuration.LANGUAGE);
-
+    // Only needed if using NLU
+    public static final String CONTEXT_TAG = "M11664_A3464";
 
     public static final int PERMISSION_REQUEST_MICROPHONE = 0;
     public static final int PERMISSION_REQUEST_LOCATION = 1;
