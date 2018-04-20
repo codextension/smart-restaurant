@@ -5,6 +5,7 @@ import android.annotation.SuppressLint;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.location.Criteria;
@@ -57,14 +58,16 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 
-public class MainActivity extends AppCompatActivity implements SharedPreferences.OnSharedPreferenceChangeListener, ActivityCompat.OnRequestPermissionsResultCallback {
+public class MainActivity extends AppCompatActivity implements OnMapReadyCallback, SharedPreferences.OnSharedPreferenceChangeListener, ActivityCompat.OnRequestPermissionsResultCallback {
     private MapView mapView;
     private GoogleMap map;
-    private ArrayList markerPoints = new ArrayList();
+    private ArrayList<LatLng> markerPoints = new ArrayList<>();
     private FloatingActionButton listenToUserBtn;
 
     private Session speechSession;
     private Transaction recoTx;
+    private String baseNearbyUrl = "https://maps.googleapis.com/maps/api/place/nearbysearch/json?";
+
     private SharedPreferences sharedPreferences;
     private Transaction.Options recoTxOptions = new Transaction.Options();
     private Transaction.Listener recoListener = new Transaction.Listener() {
@@ -123,20 +126,45 @@ public class MainActivity extends AppCompatActivity implements SharedPreferences
         JSONObject intent = action.getJSONObject("intent");
 
         String domain = intent.getString("value");
+
+        String url = baseNearbyUrl;
+
         if (domain.equals("restaurantDomain")) {
+            url += "&type=restaurant";
+
             if (concepts.has("distance_modifier")) {
                 JSONObject distance_modifier = ((JSONArray) concepts.get("distance_modifier")).getJSONObject(0);
-                String distance = distance_modifier.getString("value");
+                url += "&radius=" + 100;
             }
             if (concepts.has("restaurant_name")) {
                 JSONObject restaurant_name = ((JSONArray) concepts.get("restaurant_name")).getJSONObject(0);
-                String restaurant = restaurant_name.getString("value");
+                String restaurant = restaurant_name.getString("literal");
+                url += "&keyword=" + restaurant;
             }
             if (concepts.has("price_modifier")) {
                 JSONObject price_modifier = ((JSONArray) concepts.get("price_modifier")).getJSONObject(0);
-                String price = price_modifier.getString("value");
+                String price = price_modifier.getString("literal");
             }
+
+            DownloadTask downloadTask = new DownloadTask(new ParserNearestPlaceTask());
+
+            // Start downloading json data from Google Directions API
+            downloadTask.execute(url);
         }
+
+        // https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=-33.8670522,151.1957362&radius=10&type=restaurant&keyword=burger%20king
+    }
+
+    private String apiKey() {
+        String myApiKey = "";
+        try {
+            ApplicationInfo ai = getPackageManager().getApplicationInfo(this.getPackageName(), PackageManager.GET_META_DATA);
+            Bundle bundle = ai.metaData;
+            myApiKey = bundle.getString("com.google.android.maps.v2.API_KEY");
+        } catch (PackageManager.NameNotFoundException e) {
+        } catch (NullPointerException e) {
+        }
+        return myApiKey;
     }
 
     private void showMessage(String msg) {
@@ -197,71 +225,7 @@ public class MainActivity extends AppCompatActivity implements SharedPreferences
         recoTxOptions.setLanguage(new Language(syncConnPref));
 
         // Gets to GoogleMap from the MapView and does initialization stuff
-        mapView.getMapAsync(new OnMapReadyCallback() {
-            @Override
-            public void onMapReady(GoogleMap googleMap) {
-                map = googleMap;
-                map.getUiSettings().setMyLocationButtonEnabled(true);
-                map.getUiSettings().setCompassEnabled(true);
-                map.getUiSettings().setZoomControlsEnabled(true);
-                if (ActivityCompat.checkSelfPermission(getBaseContext(), Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED || ActivityCompat.checkSelfPermission(getBaseContext(), Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
-                    initializeMap();
-                } else {
-                    requestPermissions(new String[]{Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION},
-                            Configuration.PERMISSION_REQUEST_LOCATION);
-                }
-
-
-                map.setOnMapClickListener(new GoogleMap.OnMapClickListener() {
-                    @Override
-                    public void onMapClick(LatLng latLng) {
-
-                        if (markerPoints.size() > 1) {
-                            markerPoints.clear();
-                            map.clear();
-                        }
-
-                        // Adding new item to the ArrayList
-                        markerPoints.add(latLng);
-
-                        // Creating MarkerOptions
-                        MarkerOptions options = new MarkerOptions();
-
-                        // Setting the position of the marker
-                        options.position(latLng);
-
-                        if (markerPoints.size() == 1) {
-                            options.icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_GREEN));
-                        } else if (markerPoints.size() == 2) {
-                            options.icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED));
-                        }
-
-                        // Add new marker to the Google Map Android API V2
-                        map.addMarker(options);
-
-                        // Checks, whether start and end locations are captured
-                        if (markerPoints.size() >= 2) {
-                            LatLng origin = (LatLng) markerPoints.get(0);
-                            LatLng dest = (LatLng) markerPoints.get(1);
-
-                            // Getting URL to the Google Directions API
-                            String url = getDirectionsUrl(origin, dest);
-
-                            DownloadTask downloadTask = new DownloadTask();
-
-                            // Start downloading json data from Google Directions API
-                            downloadTask.execute(url);
-                        }
-
-                    }
-                });
-
-            }
-        });
-
-
-        MapsInitializer.initialize(this);
-
+        mapView.getMapAsync(this);
     }
 
     @SuppressLint("MissingPermission")
@@ -271,6 +235,9 @@ public class MainActivity extends AppCompatActivity implements SharedPreferences
         Criteria criteria = new Criteria();
         Location location = locationManager.getLastKnownLocation(locationManager.getBestProvider(criteria, false));
         if (location != null) {
+            baseNearbyUrl += "location=" + location.getLatitude() + "," + location.getLongitude();
+            baseNearbyUrl += "&key=" + apiKey();
+            markerPoints.add(new LatLng(location.getLatitude(), location.getLongitude()));
             map.animateCamera(CameraUpdateFactory.newLatLngZoom(new LatLng(location.getLatitude(), location.getLongitude()), 13));
 
             CameraPosition cameraPosition = new CameraPosition.Builder()
@@ -398,16 +365,52 @@ public class MainActivity extends AppCompatActivity implements SharedPreferences
         recoTxOptions.setLanguage(new Language(syncConnPref));
     }
 
+    @Override
+    public void onMapReady(GoogleMap googleMap) {
+        map = googleMap;
+        map.getUiSettings().setMyLocationButtonEnabled(true);
+        map.getUiSettings().setCompassEnabled(true);
+        map.getUiSettings().setZoomControlsEnabled(true);
+        if (ActivityCompat.checkSelfPermission(getBaseContext(), Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED || ActivityCompat.checkSelfPermission(getBaseContext(), Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
+            initializeMap();
+        } else {
+            requestPermissions(new String[]{Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION},
+                    Configuration.PERMISSION_REQUEST_LOCATION);
+        }
+    }
+
+    public void drawPath() {
+        map.clear();
+
+        MarkerOptions options = new MarkerOptions();
+        options.position(markerPoints.get(1));
+        options.icon(BitmapDescriptorFactory.defaultMarker(BitmapDescriptorFactory.HUE_RED));
+        map.addMarker(options);
+
+        // Checks, whether start and end locations are captured
+        LatLng origin = (LatLng) markerPoints.get(0);
+        LatLng dest = (LatLng) markerPoints.get(1);
+
+        // Getting URL to the Google Directions API
+        String url = getDirectionsUrl(origin, dest);
+
+        DownloadTask downloadTask = new DownloadTask(new ParserTask());
+
+        // Start downloading json data from Google Directions API
+        downloadTask.execute(url);
+    }
+
     private class DownloadTask extends AsyncTask {
+        private AsyncTask asyncTask;
+
+        public DownloadTask(AsyncTask asyncTask) {
+            this.asyncTask = asyncTask;
+        }
 
         @Override
         protected void onPostExecute(Object o) {
             super.onPostExecute(o);
-
-            ParserTask parserTask = new ParserTask();
-
-
-            parserTask.execute((String) o);
+            asyncTask.execute((String) o);
         }
 
         @Override
@@ -424,17 +427,48 @@ public class MainActivity extends AppCompatActivity implements SharedPreferences
         }
     }
 
-    private class ParserTask extends AsyncTask<String, Integer, List<List<HashMap<String, String>>>> {
+    private class ParserNearestPlaceTask extends AsyncTask<Object, Integer, LatLng> {
+        @Override
+        protected void onPostExecute(LatLng s) {
+            super.onPostExecute(s);
+            if (markerPoints.size() == 2) {
+                markerPoints.remove(1);
+            }
+            markerPoints.add(s);
+            drawPath();
+        }
+
+        @Override
+        protected LatLng doInBackground(Object... objs) {
+            try {
+                JSONObject object = new JSONObject(objs[0].toString());
+                JSONArray results = (JSONArray) object.get("results");
+                if (results.length() > 0) {
+                    JSONObject res = (JSONObject) results.get(0);
+                    JSONObject geometry = res.getJSONObject("geometry");
+                    JSONObject location = geometry.getJSONObject("location");
+
+                    LatLng coords = new LatLng(location.getDouble("lat"), location.getDouble("lng"));
+                    return coords;
+                }
+                return null;
+            } catch (JSONException e) {
+                return null;
+            }
+        }
+    }
+
+    private class ParserTask extends AsyncTask<Object, Integer, List<List<HashMap<String, String>>>> {
 
         // Parsing the data in non-ui thread
         @Override
-        protected List<List<HashMap<String, String>>> doInBackground(String... jsonData) {
+        protected List<List<HashMap<String, String>>> doInBackground(Object... jsonData) {
 
             JSONObject jObject;
             List<List<HashMap<String, String>>> routes = null;
 
             try {
-                jObject = new JSONObject(jsonData[0]);
+                jObject = new JSONObject(jsonData[0].toString());
                 DirectionsJSONParser parser = new DirectionsJSONParser();
 
                 routes = parser.parse(jObject);
