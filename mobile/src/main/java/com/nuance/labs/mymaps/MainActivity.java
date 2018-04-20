@@ -1,28 +1,34 @@
 package com.nuance.labs.mymaps;
 
 import android.Manifest;
+import android.annotation.SuppressLint;
+import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
+import android.location.Criteria;
+import android.location.Location;
+import android.location.LocationManager;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.preference.PreferenceManager;
+import android.support.annotation.NonNull;
 import android.support.design.widget.FloatingActionButton;
+import android.support.design.widget.Snackbar;
 import android.support.v4.app.ActivityCompat;
 import android.support.v7.app.AppCompatActivity;
-import android.support.v7.widget.Toolbar;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
 
-import com.google.android.gms.maps.CameraUpdate;
 import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.MapView;
 import com.google.android.gms.maps.MapsInitializer;
 import com.google.android.gms.maps.OnMapReadyCallback;
 import com.google.android.gms.maps.model.BitmapDescriptorFactory;
+import com.google.android.gms.maps.model.CameraPosition;
 import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.MarkerOptions;
 import com.google.android.gms.maps.model.PolylineOptions;
@@ -49,8 +55,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 
-public class MainActivity extends AppCompatActivity {
-    private Toolbar mTopToolbar;
+public class MainActivity extends AppCompatActivity implements SharedPreferences.OnSharedPreferenceChangeListener, ActivityCompat.OnRequestPermissionsResultCallback {
     private MapView mapView;
     private GoogleMap map;
     private ArrayList markerPoints = new ArrayList();
@@ -58,7 +63,8 @@ public class MainActivity extends AppCompatActivity {
 
     private Session speechSession;
     private Transaction recoTx;
-    private Transaction.Options recoTxOptions;
+    private SharedPreferences sharedPreferences;
+    private Transaction.Options recoTxOptions = new Transaction.Options();
     private Transaction.Listener recoListener = new Transaction.Listener() {
         @Override
         public void onStartedRecording(Transaction transaction) {
@@ -74,6 +80,7 @@ public class MainActivity extends AppCompatActivity {
 
         @Override
         public void onRecognition(Transaction transaction, Recognition recognition) {
+            showMessage(recognition.getText());
             super.onRecognition(transaction, recognition);
         }
 
@@ -99,9 +106,15 @@ public class MainActivity extends AppCompatActivity {
 
         @Override
         public void onError(Transaction transaction, String s, TransactionException e) {
+            showMessage(e.getLocalizedMessage());
             super.onError(transaction, s, e);
         }
     };
+
+    private void showMessage(String msg) {
+        Snackbar mySnackbar = Snackbar.make(findViewById(R.id.mainCoordinatorLayout), msg, Snackbar.LENGTH_LONG);
+        mySnackbar.show();
+    }
 
     public void listenToUser(View view) {
         if (recoTx != null) {
@@ -109,8 +122,28 @@ public class MainActivity extends AppCompatActivity {
             recoTx = null;
         }
 
-        recoTx = speechSession.recognize(recoTxOptions, recoListener);
+        if (ActivityCompat.checkSelfPermission(getBaseContext(), Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+            recoTx = speechSession.recognize(recoTxOptions, recoListener);
+        } else {
+            requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO},
+                    Configuration.PERMISSION_REQUEST_MICROPHONE);
+        }
 
+    }
+
+    @SuppressLint("MissingPermission")
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions,
+                                           @NonNull int[] grantResults) {
+        if (requestCode == Configuration.PERMISSION_REQUEST_MICROPHONE) {
+            if (grantResults.length == 1 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                recoTx = speechSession.recognize(recoTxOptions, recoListener);
+            }
+        } else if (requestCode == Configuration.PERMISSION_REQUEST_LOCATION) {
+            if (grantResults.length == 1 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                initializeMap();
+            }
+        }
     }
 
     @Override
@@ -125,14 +158,13 @@ public class MainActivity extends AppCompatActivity {
         listenToUserBtn = findViewById(R.id.listenToUserBtn);
 
         speechSession = Session.Factory.session(this, Configuration.SERVER_URI, Configuration.APP_KEY);
-        recoTxOptions = new Transaction.Options();
         recoTxOptions.setRecognitionType(RecognitionType.DICTATION);
         recoTxOptions.setDetection(DetectionType.Short);
-        recoTxOptions.setLanguage(new Language(Configuration.LANGUAGE));
         recoTxOptions.setResultDeliveryType(ResultDeliveryType.FINAL);
-
-        SharedPreferences sharedPref = PreferenceManager.getDefaultSharedPreferences(this);
-        String syncConnPref = sharedPref.getString("gmap_key", "");
+        sharedPreferences = PreferenceManager.getDefaultSharedPreferences(this);
+        String syncConnPref = sharedPreferences.getString("language_code", "eng-USA");
+        sharedPreferences.registerOnSharedPreferenceChangeListener(this);
+        recoTxOptions.setLanguage(new Language(syncConnPref));
 
         // Gets to GoogleMap from the MapView and does initialization stuff
         mapView.getMapAsync(new OnMapReadyCallback() {
@@ -143,11 +175,13 @@ public class MainActivity extends AppCompatActivity {
                 map.getUiSettings().setCompassEnabled(true);
                 map.getUiSettings().setZoomControlsEnabled(true);
                 if (ActivityCompat.checkSelfPermission(getBaseContext(), Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED || ActivityCompat.checkSelfPermission(getBaseContext(), Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
-                    map.setMyLocationEnabled(true);
+                    initializeMap();
+                } else {
+                    requestPermissions(new String[]{Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION},
+                            Configuration.PERMISSION_REQUEST_LOCATION);
                 }
-                // Updates the location and zoom of the MapView
-                CameraUpdate cameraUpdate = CameraUpdateFactory.newCameraPosition(map.getCameraPosition());
-                map.animateCamera(cameraUpdate);
+
+
                 map.setOnMapClickListener(new GoogleMap.OnMapClickListener() {
                     @Override
                     public void onMapClick(LatLng latLng) {
@@ -200,6 +234,28 @@ public class MainActivity extends AppCompatActivity {
 
     }
 
+    @SuppressLint("MissingPermission")
+    private void initializeMap() {
+        map.setMyLocationEnabled(true);
+        map.getUiSettings().setMyLocationButtonEnabled(true);
+        map.getUiSettings().setCompassEnabled(true);
+        map.getUiSettings().setZoomControlsEnabled(true);
+        LocationManager locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
+        Criteria criteria = new Criteria();
+        Location location = locationManager.getLastKnownLocation(locationManager.getBestProvider(criteria, false));
+        if (location != null) {
+            map.animateCamera(CameraUpdateFactory.newLatLngZoom(new LatLng(location.getLatitude(), location.getLongitude()), 13));
+
+            CameraPosition cameraPosition = new CameraPosition.Builder()
+                    .target(new LatLng(location.getLatitude(), location.getLongitude()))      // Sets the center of the map to location user
+                    .zoom(14)                   // Sets the zoom
+                    .bearing(90)                // Sets the orientation of the camera to east
+                    .tilt(0)                   // Sets the tilt of the camera to 30 degrees
+                    .build();                   // Creates a CameraPosition from the builder
+            map.animateCamera(CameraUpdateFactory.newCameraPosition(cameraPosition));
+        }
+    }
+
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
         // Inflate the menu; this adds items to the action bar if it is present.
@@ -233,12 +289,18 @@ public class MainActivity extends AppCompatActivity {
     public void onDestroy() {
         super.onDestroy();
         mapView.onDestroy();
+        sharedPreferences.unregisterOnSharedPreferenceChangeListener(this);
     }
 
     @Override
     public void onLowMemory() {
         super.onLowMemory();
         mapView.onLowMemory();
+    }
+
+    @Override
+    public void onPause() {
+        super.onPause();
     }
 
     private String getDirectionsUrl(LatLng origin, LatLng dest) {
@@ -299,6 +361,12 @@ public class MainActivity extends AppCompatActivity {
             urlConnection.disconnect();
         }
         return data;
+    }
+
+    @Override
+    public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, String key) {
+        String syncConnPref = sharedPreferences.getString("language_code", "eng-USA");
+        recoTxOptions.setLanguage(new Language(syncConnPref));
     }
 
     private class DownloadTask extends AsyncTask {

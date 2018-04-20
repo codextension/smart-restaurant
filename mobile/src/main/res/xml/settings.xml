@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android">
     <EditTextPreference
-        android:key="gmap_key"
-        android:summary="Please provide your Google Map Api Key"
-        android:title="GoogleMap Api Key"></EditTextPreference>
+        android:defaultValue="@string/lang_usa"
+        android:key="language_code"
+        android:summary="Please provide the language code of the SpeechKit"
+        android:title="Language code"></EditTextPreference>
 </PreferenceScreen>

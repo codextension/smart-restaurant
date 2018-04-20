@@ -22,4 +22,8 @@ public class Configuration {
 
     public static final PcmFormat PCM_FORMAT = new PcmFormat(PcmFormat.SampleFormat.SignedLinear16, 16000, 1);
     public static final String LANGUAGE_CODE = (Configuration.LANGUAGE.contains("!") ? "eng-USA" : Configuration.LANGUAGE);
+
+
+    public static final int PERMISSION_REQUEST_MICROPHONE = 0;
+    public static final int PERMISSION_REQUEST_LOCATION = 1;
 }

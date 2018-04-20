@@ -4,13 +4,8 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:id="@+id/mainCoordinatorLayout"
     tools:context=".MainActivity">
-
-    <android.support.v7.widget.Toolbar
-        android:id="@+id/my_toolbar"
-        android:layout_width="match_parent"
-        android:layout_height="?android:attr/actionBarSize"
-        android:elevation="4dp" />
 
     <com.google.android.gms.maps.MapView
         android:id="@+id/mapView"
@@ -28,5 +23,4 @@
         android:onClick="listenToUser"
         app:backgroundTint="@color/whiteBackground"
         app:srcCompat="@android:drawable/ic_btn_speak_now" />
-
 </android.support.design.widget.CoordinatorLayout>
