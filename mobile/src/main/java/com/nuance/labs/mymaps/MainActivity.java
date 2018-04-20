@@ -8,11 +8,13 @@ import android.graphics.Color;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.preference.PreferenceManager;
+import android.support.design.widget.FloatingActionButton;
 import android.support.v4.app.ActivityCompat;
 import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.Toolbar;
 import android.view.Menu;
 import android.view.MenuItem;
+import android.view.View;
 
 import com.google.android.gms.maps.CameraUpdate;
 import com.google.android.gms.maps.CameraUpdateFactory;
@@ -24,6 +26,16 @@ import com.google.android.gms.maps.model.BitmapDescriptorFactory;
 import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.MarkerOptions;
 import com.google.android.gms.maps.model.PolylineOptions;
+import com.nuance.speechkit.Audio;
+import com.nuance.speechkit.DetectionType;
+import com.nuance.speechkit.Interpretation;
+import com.nuance.speechkit.Language;
+import com.nuance.speechkit.Recognition;
+import com.nuance.speechkit.RecognitionType;
+import com.nuance.speechkit.ResultDeliveryType;
+import com.nuance.speechkit.Session;
+import com.nuance.speechkit.Transaction;
+import com.nuance.speechkit.TransactionException;
 
 import org.json.JSONObject;
 
@@ -42,6 +54,64 @@ public class MainActivity extends AppCompatActivity {
     private MapView mapView;
     private GoogleMap map;
     private ArrayList markerPoints = new ArrayList();
+    private FloatingActionButton listenToUserBtn;
+
+    private Session speechSession;
+    private Transaction recoTx;
+    private Transaction.Options recoTxOptions;
+    private Transaction.Listener recoListener = new Transaction.Listener() {
+        @Override
+        public void onStartedRecording(Transaction transaction) {
+            listenToUserBtn.setImageResource(android.R.drawable.presence_audio_online);
+            super.onStartedRecording(transaction);
+        }
+
+        @Override
+        public void onFinishedRecording(Transaction transaction) {
+            listenToUserBtn.setImageResource(android.R.drawable.ic_btn_speak_now);
+            super.onFinishedRecording(transaction);
+        }
+
+        @Override
+        public void onRecognition(Transaction transaction, Recognition recognition) {
+            super.onRecognition(transaction, recognition);
+        }
+
+        @Override
+        public void onInterpretation(Transaction transaction, Interpretation interpretation) {
+            super.onInterpretation(transaction, interpretation);
+        }
+
+        @Override
+        public void onServiceResponse(Transaction transaction, JSONObject jsonObject) {
+            super.onServiceResponse(transaction, jsonObject);
+        }
+
+        @Override
+        public void onAudio(Transaction transaction, Audio audio) {
+            super.onAudio(transaction, audio);
+        }
+
+        @Override
+        public void onSuccess(Transaction transaction, String s) {
+            super.onSuccess(transaction, s);
+        }
+
+        @Override
+        public void onError(Transaction transaction, String s, TransactionException e) {
+            super.onError(transaction, s, e);
+        }
+    };
+
+    public void listenToUser(View view) {
+        if (recoTx != null) {
+            recoTx.cancel();
+            recoTx = null;
+        }
+
+        recoTx = speechSession.recognize(recoTxOptions, recoListener);
+
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -52,6 +122,14 @@ public class MainActivity extends AppCompatActivity {
         mapView = (MapView) findViewById(R.id.mapView);
         mapView.onCreate(savedInstanceState);
 
+        listenToUserBtn = findViewById(R.id.listenToUserBtn);
+
+        speechSession = Session.Factory.session(this, Configuration.SERVER_URI, Configuration.APP_KEY);
+        recoTxOptions = new Transaction.Options();
+        recoTxOptions.setRecognitionType(RecognitionType.DICTATION);
+        recoTxOptions.setDetection(DetectionType.Short);
+        recoTxOptions.setLanguage(new Language(Configuration.LANGUAGE));
+        recoTxOptions.setResultDeliveryType(ResultDeliveryType.FINAL);
 
         SharedPreferences sharedPref = PreferenceManager.getDefaultSharedPreferences(this);
         String syncConnPref = sharedPref.getString("gmap_key", "");
