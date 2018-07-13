@@ -134,7 +134,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
             if (concepts.has("distance_modifier")) {
                 JSONObject distance_modifier = ((JSONArray) concepts.get("distance_modifier")).getJSONObject(0);
-                url += "&radius=" + 100;
+                url += "&radius=" + 2000;
             }
             if (concepts.has("restaurant_name")) {
                 JSONObject restaurant_name = ((JSONArray) concepts.get("restaurant_name")).getJSONObject(0);
@@ -243,7 +243,7 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
             CameraPosition cameraPosition = new CameraPosition.Builder()
                     .target(new LatLng(location.getLatitude(), location.getLongitude()))      // Sets the center of the map to location user
                     .zoom(14)                   // Sets the zoom
-                    .bearing(90)                // Sets the orientation of the camera to east
+                    .bearing(0)                // Sets the orientation of the camera to east
                     .tilt(0)                   // Sets the tilt of the camera to 30 degrees
                     .build();                   // Creates a CameraPosition from the builder
             map.animateCamera(CameraUpdateFactory.newCameraPosition(cameraPosition));
@@ -309,10 +309,10 @@ public class MainActivity extends AppCompatActivity implements OnMapReadyCallbac
 
         // Sensor enabled
         String sensor = "sensor=false";
-        String mode = "mode=driving";
+        String mode = "mode=walking";
 
         // Building the parameters to the web service
-        String parameters = str_origin + "&" + str_dest + "&" + sensor + "&" + mode;
+        String parameters = str_origin + "&" + str_dest + "&" + sensor + "&" + mode + "&key=" + apiKey();
 
         // Output format
         String output = "json";
