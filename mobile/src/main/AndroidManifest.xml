@@ -38,10 +38,6 @@
                 android:value=".MainActivity" />
         </activity>
 
-        <meta-data
-            android:name="com.google.android.maps.v2.API_KEY"
-            android:value="AIzaSyBiP7bVHciB68zgmqHXcyiJZ-alnM43TSo" />
-
         <!--
  Main music service, provides media browsing and media playback services to
          consumers through MediaBrowserService and MediaSession. Consumers connect to it through

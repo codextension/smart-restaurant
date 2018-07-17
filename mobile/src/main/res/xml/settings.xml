@@ -5,4 +5,11 @@
         android:key="language_code"
         android:summary="Please provide the language code of the SpeechKit"
         android:title="Language code"></EditTextPreference>
+    <ListPreference
+        android:defaultValue="1"
+        android:entries="@array/provider"
+        android:entryValues="@array/provider"
+        android:key="src_provider"
+        android:summary="Please select a provider source"
+        android:title="Provider" />
 </PreferenceScreen>
