@@ -17,11 +17,15 @@ import android.support.v7.app.AppCompatActivity;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
+import android.widget.Toast;
 
+import com.mapbox.android.core.permissions.PermissionsListener;
+import com.mapbox.android.core.permissions.PermissionsManager;
 import com.mapbox.mapboxsdk.Mapbox;
 import com.mapbox.mapboxsdk.annotations.MarkerOptions;
 import com.mapbox.mapboxsdk.camera.CameraUpdate;
 import com.mapbox.mapboxsdk.camera.CameraUpdateFactory;
+import com.mapbox.mapboxsdk.constants.Style;
 import com.mapbox.mapboxsdk.geometry.LatLng;
 import com.mapbox.mapboxsdk.maps.MapView;
 import com.mapbox.mapboxsdk.maps.MapboxMap;
@@ -41,9 +45,13 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-public class MainActivity extends AppCompatActivity implements SharedPreferences.OnSharedPreferenceChangeListener, ActivityCompat.OnRequestPermissionsResultCallback {
+import java.util.List;
+
+public class MainActivity extends AppCompatActivity implements PermissionsListener, OnMapReadyCallback, SharedPreferences.OnSharedPreferenceChangeListener, ActivityCompat.OnRequestPermissionsResultCallback {
     private MapView mapView;
+    private MapboxMap mapboxMap;
     private FloatingActionButton listenToUserBtn;
+    private PermissionsManager permissionsManager;
 
     private Session speechSession;
     private Transaction recoTx;
@@ -162,22 +170,6 @@ public class MainActivity extends AppCompatActivity implements SharedPreferences
 
     }
 
-    @SuppressLint("MissingPermission")
-    @Override
-    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions,
-                                           @NonNull int[] grantResults) {
-        if (requestCode == Configuration.PERMISSION_REQUEST_MICROPHONE) {
-            if (grantResults.length == 1 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                JSONObject appServerData = new JSONObject();
-                recoTx = speechSession.recognizeWithService(Configuration.CONTEXT_TAG, appServerData, recoTxOptions, recoListener);
-            }
-        } else if (requestCode == Configuration.PERMISSION_REQUEST_LOCATION) {
-            if (grantResults.length == 1 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 0, 0, locationListener);
-            }
-        }
-    }
-
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -185,6 +177,7 @@ public class MainActivity extends AppCompatActivity implements SharedPreferences
         Mapbox.getInstance(this.getApplicationContext(), "pk.eyJ1IjoieGVvbm9zIiwiYSI6ImNqamwwMzhpeTFhajMzbHNvZ2ZrbXB3Z3gifQ.BcuWxZHulkyQLRZwxe8ooA");
         setContentView(R.layout.activity_main);
         mapView = (MapView) findViewById(R.id.mapView);
+        mapView.setStyleUrl(Style.MAPBOX_STREETS);
         mapView.onCreate(savedInstanceState);
         listenToUserBtn = findViewById(R.id.listenToUserBtn);
 
@@ -204,22 +197,7 @@ public class MainActivity extends AppCompatActivity implements SharedPreferences
             locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 0, 0, locationListener);
         }
 
-        mapView.getMapAsync(new OnMapReadyCallback() {
-            @Override
-            public void onMapReady(MapboxMap mapboxMap) {
-                CameraUpdate cameraUpdate = CameraUpdateFactory.newLatLng(new LatLng(locationListener.getLocation().getLatitude(), locationListener.getLocation().getLongitude()));
-                mapboxMap.animateCamera(CameraUpdateFactory.zoomBy(11));
-                mapboxMap.animateCamera(cameraUpdate);
-
-                // Customize map with markers, polylines, etc.
-                mapboxMap.addMarker(new MarkerOptions()
-                        .position(new LatLng(locationListener.getLocation().getLatitude(), locationListener.getLocation().getLongitude()))
-                        .title("Current Location")
-                );
-
-
-            }
-        });
+        mapView.getMapAsync(this);
 
     }
 
@@ -289,4 +267,60 @@ public class MainActivity extends AppCompatActivity implements SharedPreferences
         recoTxOptions.setLanguage(new Language(syncConnPref));
     }
 
+    @Override
+    public void onMapReady(MapboxMap mapboxMap) {
+        this.mapboxMap = mapboxMap;
+        enableLocationPlugin();
+
+    }
+
+    @SuppressWarnings({"MissingPermission"})
+    private void enableLocationPlugin() {
+        // Check if permissions are enabled and if not request
+        if (PermissionsManager.areLocationPermissionsGranted(this)) {
+
+            mapboxMap.addMarker(new MarkerOptions()
+                    .position(new LatLng(locationListener.getLocation().getLatitude(), locationListener.getLocation().getLongitude()))
+                    .title("Current Location")
+            );
+
+            CameraUpdate cameraUpdate = CameraUpdateFactory.newLatLng(new LatLng(locationListener.getLocation().getLatitude(), locationListener.getLocation().getLongitude()));
+            mapboxMap.animateCamera(CameraUpdateFactory.zoomBy(5));
+            mapboxMap.animateCamera(cameraUpdate);
+        } else {
+            permissionsManager = new PermissionsManager(this);
+            permissionsManager.requestLocationPermissions(this);
+        }
+    }
+
+    @Override
+    public void onExplanationNeeded(List<String> permissionsToExplain) {
+        Toast.makeText(this, R.string.user_location_permission_explanation, Toast.LENGTH_LONG).show();
+    }
+
+    @Override
+    public void onPermissionResult(boolean granted) {
+        if (granted) {
+            enableLocationPlugin();
+        } else {
+            Toast.makeText(this, R.string.user_location_permission_not_granted, Toast.LENGTH_LONG).show();
+            finish();
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions,
+                                           @NonNull int[] grantResults) {
+        permissionsManager.onRequestPermissionsResult(requestCode, permissions, grantResults);
+/*        if (requestCode == Configuration.PERMISSION_REQUEST_MICROPHONE) {
+            if (grantResults.length == 1 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                JSONObject appServerData = new JSONObject();
+                recoTx = speechSession.recognizeWithService(Configuration.CONTEXT_TAG, appServerData, recoTxOptions, recoListener);
+            }
+        } else if (requestCode == Configuration.PERMISSION_REQUEST_LOCATION) {
+            if (grantResults.length == 1 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 0, 0, locationListener);
+            }
+        }*/
+    }
 }
