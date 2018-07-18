@@ -21,8 +21,12 @@ import android.widget.Toast;
 
 import com.mapbox.android.core.permissions.PermissionsListener;
 import com.mapbox.android.core.permissions.PermissionsManager;
+import com.mapbox.geojson.Point;
 import com.mapbox.mapboxsdk.Mapbox;
+import com.mapbox.mapboxsdk.annotations.Icon;
+import com.mapbox.mapboxsdk.annotations.IconFactory;
 import com.mapbox.mapboxsdk.annotations.MarkerOptions;
+import com.mapbox.mapboxsdk.camera.CameraPosition;
 import com.mapbox.mapboxsdk.camera.CameraUpdate;
 import com.mapbox.mapboxsdk.camera.CameraUpdateFactory;
 import com.mapbox.mapboxsdk.constants.Style;
@@ -154,6 +158,10 @@ public class MainActivity extends AppCompatActivity implements PermissionsListen
         mySnackbar.show();
     }
 
+    public void gotoMyCoords(View view) {
+        enableLocationPlugin();
+    }
+
     public void listenToUser(View view) {
         if (recoTx != null) {
             recoTx.cancel();
@@ -174,17 +182,17 @@ public class MainActivity extends AppCompatActivity implements PermissionsListen
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
-        Mapbox.getInstance(this.getApplicationContext(), "pk.eyJ1IjoieGVvbm9zIiwiYSI6ImNqamwwMzhpeTFhajMzbHNvZ2ZrbXB3Z3gifQ.BcuWxZHulkyQLRZwxe8ooA");
+        Mapbox.getInstance(this, "pk.eyJ1IjoieGVvbm9zIiwiYSI6ImNqanEzOGMzODV5aWszcG8zZ2NuYWRwY2MifQ.r0EfxOqx3A4CgXOIeKBwuQ");
         setContentView(R.layout.activity_main);
         mapView = (MapView) findViewById(R.id.mapView);
-        mapView.setStyleUrl(Style.MAPBOX_STREETS);
+        mapView.setStyleUrl("mapbox://styles/mapbox/streets-v10");
         mapView.onCreate(savedInstanceState);
         listenToUserBtn = findViewById(R.id.listenToUserBtn);
 
         speechSession = Session.Factory.session(this, Configuration.SERVER_URI, Configuration.APP_KEY);
         recoTxOptions.setRecognitionType(RecognitionType.DICTATION);
         recoTxOptions.setDetection(DetectionType.Short);
-        recoTxOptions.setResultDeliveryType(ResultDeliveryType.FINAL);
+        recoTxOptions.setResultDeliveryType(ResultDeliveryType.PROGRESSIVE);
         sharedPreferences = PreferenceManager.getDefaultSharedPreferences(this);
         String syncConnPref = sharedPreferences.getString("language_code", "eng-USA");
         sharedPreferences.registerOnSharedPreferenceChangeListener(this);
@@ -244,6 +252,12 @@ public class MainActivity extends AppCompatActivity implements PermissionsListen
     }
 
     @Override
+    protected void onStart() {
+        super.onStart();
+        mapView.onStart();
+    }
+
+    @Override
     public void onStop() {
         super.onStop();
         mapView.onStop();
@@ -270,23 +284,17 @@ public class MainActivity extends AppCompatActivity implements PermissionsListen
     @Override
     public void onMapReady(MapboxMap mapboxMap) {
         this.mapboxMap = mapboxMap;
-        enableLocationPlugin();
-
     }
 
     @SuppressWarnings({"MissingPermission"})
     private void enableLocationPlugin() {
         // Check if permissions are enabled and if not request
         if (PermissionsManager.areLocationPermissionsGranted(this)) {
-
             mapboxMap.addMarker(new MarkerOptions()
                     .position(new LatLng(locationListener.getLocation().getLatitude(), locationListener.getLocation().getLongitude()))
-                    .title("Current Location")
             );
-
-            CameraUpdate cameraUpdate = CameraUpdateFactory.newLatLng(new LatLng(locationListener.getLocation().getLatitude(), locationListener.getLocation().getLongitude()));
-            mapboxMap.animateCamera(CameraUpdateFactory.zoomBy(5));
-            mapboxMap.animateCamera(cameraUpdate);
+            mapboxMap.animateCamera(CameraUpdateFactory.newCameraPosition(new CameraPosition.Builder().target(new LatLng(locationListener.getLocation().getLatitude(), locationListener.getLocation().getLongitude()))
+                    .zoom(8).build()), 2000, null);
         } else {
             permissionsManager = new PermissionsManager(this);
             permissionsManager.requestLocationPermissions(this);
@@ -295,7 +303,7 @@ public class MainActivity extends AppCompatActivity implements PermissionsListen
 
     @Override
     public void onExplanationNeeded(List<String> permissionsToExplain) {
-        Toast.makeText(this, R.string.user_location_permission_explanation, Toast.LENGTH_LONG).show();
+        Toast.makeText(this, "we need special access", Toast.LENGTH_LONG).show();
     }
 
     @Override
@@ -303,7 +311,7 @@ public class MainActivity extends AppCompatActivity implements PermissionsListen
         if (granted) {
             enableLocationPlugin();
         } else {
-            Toast.makeText(this, R.string.user_location_permission_not_granted, Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "Permission not granted", Toast.LENGTH_LONG).show();
             finish();
         }
     }

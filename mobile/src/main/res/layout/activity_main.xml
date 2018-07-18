@@ -13,7 +13,7 @@
         android:id="@+id/mapView"
         android:layout_width="fill_parent"
         android:layout_height="fill_parent"
-        mapbox:mapbox_styleUrl="mapbox://styles/mapbox/streets-v10" />
+        mapbox:mapbox_uiRotateGestures="true" />
 
     <android.support.design.widget.FloatingActionButton
         android:id="@+id/listenToUserBtn"
@@ -26,4 +26,16 @@
         android:onClick="listenToUser"
         app:backgroundTint="@color/whiteBackground"
         app:srcCompat="@android:drawable/ic_btn_speak_now" />
+
+    <android.support.design.widget.FloatingActionButton
+        android:id="@+id/current_location"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|end"
+        android:layout_margin="@dimen/fab_margin"
+        android:clickable="true"
+        android:focusable="true"
+        android:onClick="gotoMyCoords"
+        app:backgroundTint="@color/whiteBackground"
+        app:srcCompat="@android:drawable/ic_menu_mylocation" />
 </android.support.design.widget.CoordinatorLayout>
