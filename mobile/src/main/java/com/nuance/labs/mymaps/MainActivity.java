@@ -6,6 +6,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.location.Location;
 import android.location.LocationManager;
 import android.os.Bundle;
 import android.preference.PreferenceManager;
@@ -19,8 +20,11 @@ import android.view.MenuItem;
 import android.view.View;
 import android.widget.Toast;
 
+import com.mapbox.android.core.location.LocationEngine;
+import com.mapbox.android.core.location.LocationEngineProvider;
 import com.mapbox.android.core.permissions.PermissionsListener;
 import com.mapbox.android.core.permissions.PermissionsManager;
+import com.mapbox.api.directions.v5.models.DirectionsResponse;
 import com.mapbox.geojson.Point;
 import com.mapbox.mapboxsdk.Mapbox;
 import com.mapbox.mapboxsdk.annotations.Icon;
@@ -34,6 +38,9 @@ import com.mapbox.mapboxsdk.geometry.LatLng;
 import com.mapbox.mapboxsdk.maps.MapView;
 import com.mapbox.mapboxsdk.maps.MapboxMap;
 import com.mapbox.mapboxsdk.maps.OnMapReadyCallback;
+import com.mapbox.services.android.navigation.ui.v5.route.NavigationMapRoute;
+import com.mapbox.services.android.navigation.v5.navigation.MapboxNavigation;
+import com.mapbox.services.android.navigation.v5.navigation.NavigationRoute;
 import com.nuance.speechkit.Audio;
 import com.nuance.speechkit.DetectionType;
 import com.nuance.speechkit.Interpretation;
@@ -51,28 +58,25 @@ import org.json.JSONObject;
 
 import java.util.List;
 
+import retrofit2.Call;
+import retrofit2.Callback;
+import retrofit2.Response;
+
 public class MainActivity extends AppCompatActivity implements PermissionsListener, OnMapReadyCallback, SharedPreferences.OnSharedPreferenceChangeListener, ActivityCompat.OnRequestPermissionsResultCallback {
     private MapView mapView;
     private MapboxMap mapboxMap;
     private FloatingActionButton listenToUserBtn;
     private PermissionsManager permissionsManager;
-
+    private MapboxNavigation navigation;
     private Session speechSession;
     private Transaction recoTx;
+    private NavigationMapRoute navigationMapRoute;
 
     private SharedPreferences sharedPreferences;
     private Transaction.Options recoTxOptions = new Transaction.Options();
 
     private MyCurrentLoctionListener locationListener = new MyCurrentLoctionListener();
     private LocationManager locationManager;
-    /**
-     * if (ActivityCompat.checkSelfPermission(getBaseContext(), Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED || ActivityCompat.checkSelfPermission(getBaseContext(), Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
-     * initializeMap();
-     * } else {
-     * requestPermissions(new String[]{Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION},
-     * Configuration.PERMISSION_REQUEST_LOCATION);
-     * }
-     */
 
     private Transaction.Listener recoListener = new Transaction.Listener() {
         @Override
@@ -183,10 +187,14 @@ public class MainActivity extends AppCompatActivity implements PermissionsListen
         super.onCreate(savedInstanceState);
         locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
         Mapbox.getInstance(this, "pk.eyJ1IjoieGVvbm9zIiwiYSI6ImNqanEzOGMzODV5aWszcG8zZ2NuYWRwY2MifQ.r0EfxOqx3A4CgXOIeKBwuQ");
+        navigation = new MapboxNavigation(this, "pk.eyJ1IjoieGVvbm9zIiwiYSI6ImNqanEzOGMzODV5aWszcG8zZ2NuYWRwY2MifQ.r0EfxOqx3A4CgXOIeKBwuQ");
+        LocationEngine locationEngine = new LocationEngineProvider(this).obtainBestLocationEngineAvailable();
+        navigation.setLocationEngine(locationEngine);
         setContentView(R.layout.activity_main);
         mapView = (MapView) findViewById(R.id.mapView);
         mapView.setStyleUrl("mapbox://styles/mapbox/streets-v10");
         mapView.onCreate(savedInstanceState);
+
         listenToUserBtn = findViewById(R.id.listenToUserBtn);
 
         speechSession = Session.Factory.session(this, Configuration.SERVER_URI, Configuration.APP_KEY);
@@ -206,6 +214,29 @@ public class MainActivity extends AppCompatActivity implements PermissionsListen
         }
 
         mapView.getMapAsync(this);
+
+    }
+
+    public void takeMeThere(View view) {
+        Point origin = Point.fromLngLat(locationListener.getLocation().getLongitude(), locationListener.getLocation().getLatitude());
+        Point destination = Point.fromLngLat(48.765693, 9.170267);
+
+        NavigationRoute.builder(this)
+                .accessToken(Mapbox.getAccessToken())
+                .origin(origin)
+                .destination(destination)
+                .build()
+                .getRoute(new Callback<DirectionsResponse>() {
+                    @Override
+                    public void onResponse(Call<DirectionsResponse> call, Response<DirectionsResponse> response) {
+                        navigationMapRoute.addRoutes(response.body().routes());
+                    }
+
+                    @Override
+                    public void onFailure(Call<DirectionsResponse> call, Throwable t) {
+
+                    }
+                });
 
     }
 
@@ -243,6 +274,8 @@ public class MainActivity extends AppCompatActivity implements PermissionsListen
         super.onDestroy();
         mapView.onDestroy();
         sharedPreferences.unregisterOnSharedPreferenceChangeListener(this);
+        navigation.endNavigation();
+        navigation.onDestroy();
     }
 
     @Override
@@ -284,6 +317,8 @@ public class MainActivity extends AppCompatActivity implements PermissionsListen
     @Override
     public void onMapReady(MapboxMap mapboxMap) {
         this.mapboxMap = mapboxMap;
+        navigationMapRoute = new NavigationMapRoute(navigation, mapView, mapboxMap,
+                "admin-3-4-boundaries-bg");
     }
 
     @SuppressWarnings({"MissingPermission"})
@@ -320,15 +355,5 @@ public class MainActivity extends AppCompatActivity implements PermissionsListen
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions,
                                            @NonNull int[] grantResults) {
         permissionsManager.onRequestPermissionsResult(requestCode, permissions, grantResults);
-/*        if (requestCode == Configuration.PERMISSION_REQUEST_MICROPHONE) {
-            if (grantResults.length == 1 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                JSONObject appServerData = new JSONObject();
-                recoTx = speechSession.recognizeWithService(Configuration.CONTEXT_TAG, appServerData, recoTxOptions, recoListener);
-            }
-        } else if (requestCode == Configuration.PERMISSION_REQUEST_LOCATION) {
-            if (grantResults.length == 1 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 0, 0, locationListener);
-            }
-        }*/
     }
 }
