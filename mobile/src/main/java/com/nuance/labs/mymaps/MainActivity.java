@@ -15,11 +15,22 @@ import android.support.design.widget.FloatingActionButton;
 import android.support.design.widget.Snackbar;
 import android.support.v4.app.ActivityCompat;
 import android.support.v7.app.AppCompatActivity;
+import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
 import android.widget.Toast;
 
+import com.hound.android.libphs.PhraseSpotterStream;
+import com.hound.android.sdk.Search;
+import com.hound.android.sdk.VoiceSearch;
+import com.hound.android.sdk.VoiceSearchInfo;
+import com.hound.android.sdk.VoiceSearchListener;
+import com.hound.android.sdk.audio.SimpleAudioByteStreamSource;
+import com.hound.android.sdk.util.HoundRequestInfoFactory;
+import com.hound.core.model.sdk.HoundRequestInfo;
+import com.hound.core.model.sdk.HoundResponse;
+import com.hound.core.model.sdk.PartialTranscript;
 import com.mapbox.android.core.location.LocationEngine;
 import com.mapbox.android.core.location.LocationEngineProvider;
 import com.mapbox.android.core.permissions.PermissionsListener;
@@ -27,13 +38,9 @@ import com.mapbox.android.core.permissions.PermissionsManager;
 import com.mapbox.api.directions.v5.models.DirectionsResponse;
 import com.mapbox.geojson.Point;
 import com.mapbox.mapboxsdk.Mapbox;
-import com.mapbox.mapboxsdk.annotations.Icon;
-import com.mapbox.mapboxsdk.annotations.IconFactory;
 import com.mapbox.mapboxsdk.annotations.MarkerOptions;
 import com.mapbox.mapboxsdk.camera.CameraPosition;
-import com.mapbox.mapboxsdk.camera.CameraUpdate;
 import com.mapbox.mapboxsdk.camera.CameraUpdateFactory;
-import com.mapbox.mapboxsdk.constants.Style;
 import com.mapbox.mapboxsdk.geometry.LatLng;
 import com.mapbox.mapboxsdk.maps.MapView;
 import com.mapbox.mapboxsdk.maps.MapboxMap;
@@ -56,7 +63,9 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.io.InputStream;
 import java.util.List;
+import java.util.UUID;
 
 import retrofit2.Call;
 import retrofit2.Callback;
@@ -71,10 +80,11 @@ public class MainActivity extends AppCompatActivity implements PermissionsListen
     private Session speechSession;
     private Transaction recoTx;
     private NavigationMapRoute navigationMapRoute;
-
+    private VoiceSearch voiceSearch;
     private SharedPreferences sharedPreferences;
     private Transaction.Options recoTxOptions = new Transaction.Options();
-
+    private boolean houndify = false;
+    private Snackbar mySnackbar;
     private MyCurrentLoctionListener locationListener = new MyCurrentLoctionListener();
     private LocationManager locationManager;
 
@@ -156,30 +166,167 @@ public class MainActivity extends AppCompatActivity implements PermissionsListen
         }
     }
 
+    private final VoiceSearchListener voiceListener = new VoiceSearchListener() {
 
-    private void showMessage(String msg) {
-        Snackbar mySnackbar = Snackbar.make(findViewById(R.id.mainCoordinatorLayout), msg, Snackbar.LENGTH_LONG);
-        mySnackbar.show();
-    }
+        /**
+         * Called every time a new partial transcription is received from the Hound server.
+         * This is used for providing feedback to the user of the server's interpretation of
+         * their query.
+         *
+         * @param transcript
+         */
+        @Override
+        public void onTranscriptionUpdate(final PartialTranscript transcript) {
+            switch (voiceSearch.getState()) {
+                case STATE_STARTED:
+                    Log.d("MyMaps", "Listening...");
+                    listenToUserBtn.setImageResource(android.R.drawable.presence_audio_online);
+                    break;
+
+                case STATE_SEARCHING:
+                    Log.d("MyMaps", "Receiving...");
+                    listenToUserBtn.setImageResource(android.R.drawable.ic_btn_speak_now);
+                    break;
+
+                default:
+                    Log.w("MyMaps", "Unknown");
+                    listenToUserBtn.setImageResource(android.R.drawable.ic_btn_speak_now);
+                    break;
+            }
+
+            showMessage(transcript.getPartialTranscript());
+        }
+
+        @Override
+        public void onResponse(final HoundResponse response, final VoiceSearchInfo info) {
+            voiceSearch = null;
+
+            // Make sure the request succeeded with OK
+            if (!response.getStatus().equals(HoundResponse.Status.OK)) {
+                Log.e("MyMaps", "Request failed with: " + response.getErrorMessage());
+                return;
+            }
+
+
+            if (response.getResults().isEmpty()) {
+                Log.i("MyMaps", "No Results");
+                return;
+            }
+            try {
+                Log.i("MyMaps", info.getContentBody());
+                JSONObject jsonObject = new JSONObject(info.getContentBody());
+                JSONObject allresults = jsonObject.getJSONArray("AllResults").getJSONObject(0);
+                JSONObject ConversationState = allresults.getJSONObject("ConversationState");
+                JSONObject ResponseEntities = ConversationState.getJSONObject("ResponseEntities");
+                JSONArray Where = ResponseEntities.getJSONArray("Where");
+                Double Latitude = Where.getJSONObject(0).getDouble("Latitude");
+                Double Longitude = Where.getJSONObject(0).getDouble("Longitude");
+                takeMeThere(Point.fromLngLat(Longitude, Latitude));
+            } catch (final JSONException ex) {
+            }
+        }
+
+        /**
+         * Called if the search fails do to some kind of error situation.
+         *
+         * @param ex
+         * @param info
+         */
+        @Override
+        public void onError(final Exception ex, final VoiceSearchInfo info) {
+            voiceSearch = null;
+
+            Log.e("MyMaps", "Something went wrong");
+        }
+
+        /**
+         * Called when the recording phase is completed.
+         */
+        @Override
+        public void onRecordingStopped() {
+            Log.i("MyMaps", "Receiving...");
+        }
+
+        /**
+         * Called if the user aborted the search.
+         *
+         * @param info
+         */
+        @Override
+        public void onAbort(final VoiceSearchInfo info) {
+            voiceSearch = null;
+            Log.i("MyMaps", "Aborted");
+        }
+    };
 
     public void gotoMyCoords(View view) {
         enableLocationPlugin();
     }
 
+    public static void setLocation(final HoundRequestInfo requestInfo, final Location location) {
+        if (location != null) {
+            requestInfo.setLatitude(location.getLatitude());
+            requestInfo.setLongitude(location.getLongitude());
+            requestInfo.setPositionHorizontalAccuracy((double) location.getAccuracy());
+        }
+    }
+
+    private void showMessage(String msg) {
+        mySnackbar.setText(msg);
+        if (!mySnackbar.isShown()) {
+            mySnackbar.show();
+        }
+    }
+
     public void listenToUser(View view) {
-        if (recoTx != null) {
-            recoTx.cancel();
-            recoTx = null;
-        }
-
-        if (ActivityCompat.checkSelfPermission(getBaseContext(), Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
-            JSONObject appServerData = new JSONObject();
-            recoTx = speechSession.recognizeWithService(Configuration.CONTEXT_TAG, appServerData, recoTxOptions, recoListener);
+        if (houndify) {
+            if (voiceSearch == null) {
+                startSearch(new SimpleAudioByteStreamSource(), false);
+            } else {
+                voiceSearch.stopRecording();
+            }
+            Search.setDebug(true);
         } else {
-            requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO},
-                    Configuration.PERMISSION_REQUEST_MICROPHONE);
+            if (recoTx != null) {
+                recoTx.cancel();
+                recoTx = null;
+            }
+
+            if (ActivityCompat.checkSelfPermission(getBaseContext(), Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                JSONObject appServerData = new JSONObject();
+                recoTx = speechSession.recognizeWithService(Configuration.CONTEXT_TAG, appServerData, recoTxOptions, recoListener);
+            } else {
+                requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO},
+                        Configuration.PERMISSION_REQUEST_MICROPHONE);
+            }
+        }
+    }
+
+    @SuppressLint("MissingPermission")
+    private HoundRequestInfo getHoundRequestInfo(boolean enforceWakeUpPattern) {
+        final HoundRequestInfo requestInfo = HoundRequestInfoFactory.getDefault(this);
+
+        // Client App is responsible for providing a UserId for their users which is meaningful
+        // to the client.
+        requestInfo.setUserId("User ID");
+        // Each request must provide a unique request ID.
+        requestInfo.setRequestId(UUID.randomUUID().toString());
+        // Providing the user's location is useful for geographic queries, such as, "Show me
+        // restaurants near me".
+        setLocation(
+                requestInfo,
+                locationManager.getLastKnownLocation(LocationManager.PASSIVE_PROVIDER));
+
+        if (enforceWakeUpPattern) {
+            // In 'Instant Trigger Mode', we expect the wake-up phrase to be always there.
+            // If mismatch happens, the Houndify platform may consider the phrase spotting
+            // to be false-positive, and simply ignore the voice search.
+            requestInfo.setWakeUpPattern("\"OK Hound\"");
+        } else {
+            requestInfo.setWakeUpPattern(PhraseSpotterStream.PATTERN);
         }
 
+        return requestInfo;
     }
 
     @Override
@@ -203,23 +350,26 @@ public class MainActivity extends AppCompatActivity implements PermissionsListen
         recoTxOptions.setResultDeliveryType(ResultDeliveryType.PROGRESSIVE);
         sharedPreferences = PreferenceManager.getDefaultSharedPreferences(this);
         String syncConnPref = sharedPreferences.getString("language_code", "eng-USA");
+        houndify = sharedPreferences.getString("src_provider", "Nuance").equals("Houndify");
         sharedPreferences.registerOnSharedPreferenceChangeListener(this);
         recoTxOptions.setLanguage(new Language(syncConnPref));
 
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(new String[]{Manifest.permission.ACCESS_FINE_LOCATION},
                     Configuration.PERMISSION_REQUEST_LOCATION);
-        }else{
+        } else {
             locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 0, 0, locationListener);
         }
+        mySnackbar = Snackbar.make(findViewById(R.id.mainCoordinatorLayout), "", Snackbar.LENGTH_LONG);
+        mySnackbar.setDuration(5000);
 
         mapView.getMapAsync(this);
 
     }
 
-    public void takeMeThere(View view) {
+    public void takeMeThere(Point destination) {
         Point origin = Point.fromLngLat(locationListener.getLocation().getLongitude(), locationListener.getLocation().getLatitude());
-        Point destination = Point.fromLngLat(48.765693, 9.170267);
+        // Point.fromLngLat(48.765693, 9.170267);
 
         NavigationRoute.builder(this)
                 .accessToken(Mapbox.getAccessToken())
@@ -238,6 +388,23 @@ public class MainActivity extends AppCompatActivity implements PermissionsListen
                     }
                 });
 
+    }
+
+    private void startSearch(InputStream inputStream, boolean enforceWakeUpPattern) {
+        if (voiceSearch != null) {
+            return; // We are already searching
+        }
+        listenToUserBtn.setImageResource(android.R.drawable.presence_audio_online);
+
+        voiceSearch =
+                new VoiceSearch.Builder().setRequestInfo(getHoundRequestInfo(enforceWakeUpPattern))
+                        .setClientId("cRJ11Gn2_IOmqj6gOyj5GA==")
+                        .setClientKey("aVU1qvoR7gjxwexeM9k2TS11afkmMLmaHCbwti2qPiF4wZJQL38M0gY_MhCVivr0XI1YN_PLk-lbsAUQttbGFQ==")
+                        .setListener(voiceListener)
+                        .setAudioSource(inputStream)
+                        .build();
+
+        voiceSearch.start();
     }
 
     @Override
@@ -312,6 +479,7 @@ public class MainActivity extends AppCompatActivity implements PermissionsListen
     public void onSharedPreferenceChanged(SharedPreferences sharedPreferences, String key) {
         String syncConnPref = sharedPreferences.getString("language_code", "eng-USA");
         recoTxOptions.setLanguage(new Language(syncConnPref));
+        houndify = sharedPreferences.getString("src_provider", "Nuance").equals("Houndify");
     }
 
     @Override
@@ -329,7 +497,7 @@ public class MainActivity extends AppCompatActivity implements PermissionsListen
                     .position(new LatLng(locationListener.getLocation().getLatitude(), locationListener.getLocation().getLongitude()))
             );
             mapboxMap.animateCamera(CameraUpdateFactory.newCameraPosition(new CameraPosition.Builder().target(new LatLng(locationListener.getLocation().getLatitude(), locationListener.getLocation().getLongitude()))
-                    .zoom(8).build()), 2000, null);
+                    .zoom(12).build()), 2000, null);
         } else {
             permissionsManager = new PermissionsManager(this);
             permissionsManager.requestLocationPermissions(this);
