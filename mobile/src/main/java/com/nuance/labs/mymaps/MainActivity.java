@@ -164,6 +164,8 @@ public class MainActivity extends AppCompatActivity implements PermissionsListen
                 String price = price_modifier.getString("literal");
             }
         }
+
+        //TODO: missing the binding with mapbox api to show on the map.
     }
 
     private final VoiceSearchListener voiceListener = new VoiceSearchListener() {
